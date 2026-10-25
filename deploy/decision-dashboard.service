@@ -1,0 +1,13 @@
+[Unit]
+Description=Decision evaluation Chinese dashboard
+After=network.target
+
+[Service]
+WorkingDirectory=/home/szq43/code/decision-model-eval
+ExecStart=/usr/bin/python3 dashboard.py
+Restart=on-failure
+RestartSec=5
+UMask=0077
+
+[Install]
+WantedBy=default.target

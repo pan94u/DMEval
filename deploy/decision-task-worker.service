@@ -1,0 +1,16 @@
+[Unit]
+Description=Explicit decision evaluation task queue
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+WorkingDirectory=/home/szq43/code/decision-model-eval
+EnvironmentFile=/home/szq43/code/decision-model-eval/.env
+ExecStart=/usr/bin/python3 worker.py
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=60
+UMask=0077
+
+[Install]
+WantedBy=default.target
