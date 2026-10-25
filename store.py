@@ -1,5 +1,6 @@
 """Versioned sample library and explicit, durable evaluation tasks."""
 import json
+import math
 import sqlite3
 from pathlib import Path
 import time
@@ -20,6 +21,7 @@ def initialize():
         db.execute('CREATE TABLE IF NOT EXISTS samples (id TEXT PRIMARY KEY,title TEXT,category TEXT,body TEXT,revision INTEGER,updated REAL,archived INTEGER DEFAULT 0)')
         db.execute('CREATE TABLE IF NOT EXISTS tasks (id TEXT PRIMARY KEY,name TEXT,status TEXT,created REAL,updated REAL,config TEXT,snapshot TEXT,error TEXT,archived INTEGER DEFAULT 0)')
         db.execute('CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY,value TEXT)')
+        db.execute('CREATE TABLE IF NOT EXISTS task_policies (task TEXT,model TEXT,rule_id TEXT,threshold REAL,updated REAL,PRIMARY KEY(task,model,rule_id))')
         if not db.execute("SELECT 1 FROM metadata WHERE key='samples_migrated'").fetchone():
             names = {'route-zh':'中文客服路由','route-en':'英文账单路由','severity':'生产故障等级','injection':'指令干扰识别'}
             for c in engine.load_cases(ROOT/'data/smoke.jsonl'):
@@ -89,7 +91,10 @@ def create_task(data,snapshot=None):
         snapshot = [library[sid] for sid in ids]
     engine.validate_cases([s['case'] for s in snapshot])
     tid = 'task-'+uuid.uuid4().hex[:16]
-    config = {'models':models,'repeats':repeats,'provider':provider,'dataset':engine.digest(snapshot)}
+    tolerance=data.get('score_tolerance',.5)
+    if type(tolerance) not in (int,float) or not math.isfinite(tolerance) or not 0<=tolerance<=100:
+        raise ValueError('评分允许误差必须是 0–100 之间的数值')
+    config = {'models':models,'repeats':repeats,'provider':provider,'dataset':engine.digest(snapshot),'score_tolerance':tolerance}
     status = 'queued' if data.get('start') else 'draft'
     with connect() as db:
         db.execute('INSERT INTO tasks VALUES (?,?,?,?,?,?,?,?,0)',(tid,name,status,time.time(),time.time(),engine.dumps(config),engine.dumps(snapshot),''))
@@ -116,6 +121,9 @@ def task_detail(tid):
             raise ValueError('任务不存在')
         t = task(row,db)
         t['samples'] = json.loads(row['snapshot'])
+        for sample in t['samples']:
+            sample['question_rules']={key:rule_id(key,q) for key,q in sample['case']['questions'].items() if q['type']=='noul'}
+        t['decision_policy']=[dict(r) for r in db.execute('SELECT model,rule_id,threshold,updated FROM task_policies WHERE task=?',(tid,))]
         t['summary'] = engine.summary(db,tid)
         t['results'] = [dict(model=m,case_id=c,repeat=r,status=s,latency=lat,**json.loads(p)) for m,c,r,s,lat,p in db.execute('SELECT model,case_id,repeat,status,latency,payload FROM results WHERE run=? ORDER BY case_id,model,repeat',(tid,))]
         return t
@@ -133,11 +141,30 @@ def task_action(tid,action):
             db.execute('UPDATE tasks SET archived=1 WHERE id=?',(tid,))
         elif action=='clone':
             config = json.loads(row['config'])
-            return create_task(dict(config,name=row['name']+' · 副本'),json.loads(row['snapshot']))
+            new_id=create_task(dict(config,name=row['name']+' · 副本'),json.loads(row['snapshot']))
+            with connect() as target:
+                target.execute('INSERT INTO task_policies SELECT ?,model,rule_id,threshold,? FROM task_policies WHERE task=?',(new_id,time.time(),tid))
+            return new_id
         else:
             raise ValueError('任务状态已变化，请刷新后重试')
     return tid
 
-def historical_runs():
+def rule_id(key,question):
+    return engine.digest({'question':key,'instructions':question.get('instructions') or '', 'criteria':question.get('criteria') or {}})
+
+def save_policy(tid,model,rule,threshold):
+    if type(threshold) not in (int,float) or not math.isfinite(threshold) or not 0<=threshold<=1:
+        raise ValueError('判断阈值必须在 0%–100% 之间')
+    task=task_detail(tid)
+    rules={rid for s in task['samples'] for rid in s['question_rules'].values()}
+    if model not in task['config']['models'] or rule not in rules:
+        raise ValueError('请选择本任务中的模型和是／否问题')
     with connect() as db:
-        return [{'id':r['id'],'created':r['created'],'provider':json.loads(r['spec'])['provider'],'summary':engine.summary(db,r['id'])} for r in db.execute('SELECT * FROM runs WHERE id NOT IN (SELECT id FROM tasks) ORDER BY created DESC LIMIT 100').fetchall()]
+        db.execute('INSERT INTO task_policies VALUES (?,?,?,?,?) ON CONFLICT(task,model,rule_id) DO UPDATE SET threshold=excluded.threshold,updated=excluded.updated',(tid,model,rule,threshold,time.time()))
+
+def remove_unassigned_records():
+    """Remove obsolete, pre-task eval records after the user requested their removal."""
+    with connect() as db:
+        db.execute('DELETE FROM results WHERE run NOT IN (SELECT id FROM tasks)')
+        count=db.execute('DELETE FROM runs WHERE id NOT IN (SELECT id FROM tasks)').rowcount
+    return count

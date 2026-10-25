@@ -71,5 +71,44 @@ class StoreTests(unittest.TestCase):
         row=store.engine.evaluate(case,{'answers':{'q':{'noul':.5}}})[0]
         self.assertEqual(row['correct'],1)
 
+    def test_policy_persists_and_clone_inherits_without_changing_observations(self):
+        tid=self.task()
+        detail=store.task_detail(tid)
+        rule=detail['samples'][0]['question_rules']['urgent']
+        before=detail['samples']
+        store.save_policy(tid,'clef',rule,.7314)
+        detail=store.task_detail(tid)
+        self.assertEqual(detail['decision_policy'][0]['threshold'],.7314)
+        self.assertEqual(detail['samples'],before)
+        self.assertEqual(detail['results'],[])
+        clone=store.task_action(tid,'clone')
+        self.assertEqual(store.task_detail(clone)['decision_policy'][0]['threshold'],.7314)
+
+    def test_policy_rejects_invalid_scope_and_values(self):
+        tid=self.task();rule=store.task_detail(tid)['samples'][0]['question_rules']['urgent']
+        for value in (-.01,1.01,float('nan'),float('inf'),True,'0.5'):
+            with self.assertRaises(ValueError):
+                store.save_policy(tid,'clef',rule,value)
+        for model,rid in [('clef-flash',rule),('clef','unknown')]:
+            with self.assertRaises(ValueError):
+                store.save_policy(tid,model,rid,.7)
+
+    def test_removing_pre_task_records_preserves_task_results(self):
+        tid=self.task()
+        with store.connect() as db:
+            for rid in (tid,'pre-task-record'):
+                db.execute('INSERT INTO runs VALUES (?,?,?)',(rid,0,'{}'))
+                db.execute('INSERT INTO results VALUES (?,?,?,?,?,?,?)',(rid,'clef','route-zh',0,'error',0,'{}'))
+        self.assertEqual(store.remove_unassigned_records(),1)
+        with store.connect() as db:
+            self.assertEqual(db.execute('SELECT id FROM runs').fetchall()[0][0],tid)
+            self.assertEqual(db.execute('SELECT run FROM results').fetchall()[0][0],tid)
+
+    def test_task_score_tolerance_is_explicit(self):
+        tid=self.task(score_tolerance=.25)
+        self.assertEqual(store.task_detail(tid)['config']['score_tolerance'],.25)
+        with self.assertRaises(ValueError):
+            self.task(score_tolerance=-1)
+
 if __name__=='__main__':
     unittest.main()

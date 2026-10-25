@@ -52,6 +52,19 @@ class EvaluationTests(unittest.TestCase):
                 app.request_json('https://example.test', 'secret')
             self.assertEqual(call.call_count, 1)
 
+    def test_human_labels_and_gold_never_enter_model_request(self):
+        with tempfile.TemporaryDirectory() as folder:
+            case=dict(self.cases[0],presentation={'questions':{'team':{'title':'产品中的团队名称'}}},reference_reason='Local annotation only')
+            dataset=Path(folder)/'samples.jsonl'
+            dataset.write_text(json.dumps(case,ensure_ascii=False)+'\n',encoding='utf-8')
+            args=argparse.Namespace(dataset=str(dataset),models='clef',provider='cloudflare',endpoint='',repeats=1,run_id='metadata-check',db=str(Path(folder)/'db'),retry_errors=False,delay=0,output=None)
+            with patch.dict('os.environ',{'CLOUDFLARE_API_TOKEN':'test-only','CLOUDFLARE_ACCOUNT_ID':'test-account'}),patch.object(app,'request_json',return_value=app.mock_response(case)) as call,patch('builtins.print'):
+                app.run_once(args)
+            body=call.call_args.args[2]
+            self.assertEqual(set(body),{'model','state','questions'})
+            self.assertEqual(body['questions'],case['questions'])
+            self.assertNotIn('reference_reason',body)
+
     def test_transient_error_retries(self):
         error = urllib.error.HTTPError('https://example.test', 429, 'busy', {'Retry-After':'0'}, None)
         with patch('urllib.request.urlopen', side_effect=error) as call:

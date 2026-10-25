@@ -1,9 +1,0 @@
-[Unit]
-Description=One manual decision evaluation
-
-[Service]
-Type=exec
-WorkingDirectory=/home/szq43/code/decision-model-eval
-EnvironmentFile=/home/szq43/code/decision-model-eval/.env
-ExecStart=/usr/bin/python3 eval.py run --provider cloudflare --fresh
-UMask=0077

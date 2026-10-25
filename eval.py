@@ -14,7 +14,6 @@ import threading
 import time
 import urllib.error
 import urllib.request
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 VERSION = '1'
 STOP = threading.Event()
@@ -225,72 +224,31 @@ def _run_once(args):
     db.close()
     return result
 
-def serve(args):
-    class Handler(BaseHTTPRequestHandler):
-        def do_GET(self):
-            if self.path != '/':
-                self.send_error(404)
-                return
-            with connect(args.db) as db:
-                runs = [{'id': r[0], 'created': r[1], 'spec':json.loads(r[2]), 'summary':summary(db,r[0])} for r in db.execute('SELECT * FROM runs ORDER BY created DESC LIMIT 50').fetchall()]
-            body = dumps(runs).encode()
-            self.send_response(200)
-            self.send_header('Content-Type','application/json; charset=utf-8')
-            self.send_header('Content-Length',str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
-    server = ThreadingHTTPServer(('127.0.0.1', args.port), Handler)
-    server.timeout = 1
-    print(f'History: http://127.0.0.1:{args.port}', flush=True)
-    while not STOP.is_set():
-        server.handle_request()
-    server.server_close()
-
 def main():
-    p = argparse.ArgumentParser(description=__doc__)
-    sub = p.add_subparsers(dest='command', required=True)
-    for cmd in ('run', 'watch'):
-        s = sub.add_parser(cmd)
-        s.add_argument('--dataset', default='data/smoke.jsonl')
-        s.add_argument('--provider', choices=['mock','cloudflare','systemone'], default='mock')
-        s.add_argument('--models', default='clef,clef-flash')
-        s.add_argument('--endpoint', default='')
-        s.add_argument('--run-id')
-        s.add_argument('--fresh', action='store_true')
-        s.add_argument('--repeats', type=int, default=1)
-        s.add_argument('--delay', type=float, default=.25)
-        s.add_argument('--retry-errors', action='store_true')
-        s.add_argument('--output')
-        s.add_argument('--db', default='runs/evaluations.sqlite3')
-        if cmd == 'watch':
-            s.add_argument('--interval', type=float, default=3600)
-    s = sub.add_parser('serve')
-    s.add_argument('--db', default='runs/evaluations.sqlite3')
-    s.add_argument('--port', type=int, default=8787)
-    a = p.parse_args()
-    for sig in (signal.SIGINT, signal.SIGTERM):
-        signal.signal(sig, lambda *_: STOP.set())
-    if a.command == 'serve':
-        serve(a)
-        return
-    if a.repeats < 1 or a.delay < 0:
-        p.error('repeats must be positive and delay nonnegative')
-    if a.command == 'watch':
-        if a.interval < 1 or a.run_id:
-            p.error('watch requires interval >= 1 and generates its own run IDs')
-        while not STOP.is_set():
-            a.run_id = f'watch-{time.time_ns()}'
-            try:
-                run_once(a)
-            except Exception as exc:
-                print(dumps({'watch_error':type(exc).__name__}), flush=True)
-            STOP.wait(a.interval)
-    else:
-        if a.fresh:
-            a.run_id = f'manual-{time.time_ns()}'
-        result = run_once(a)
-        if any(s['errors'] for s in result['summary'].values()):
-            raise SystemExit(2)
+    parser=argparse.ArgumentParser(description=__doc__)
+    sub=parser.add_subparsers(dest='command',required=True)
+    run=sub.add_parser('run')
+    run.add_argument('--dataset',default='data/smoke.jsonl')
+    run.add_argument('--provider',choices=['mock','cloudflare','systemone'],default='mock')
+    run.add_argument('--models',default='clef,clef-flash')
+    run.add_argument('--endpoint',default='')
+    run.add_argument('--run-id')
+    run.add_argument('--fresh',action='store_true')
+    run.add_argument('--repeats',type=int,default=1)
+    run.add_argument('--delay',type=float,default=.25)
+    run.add_argument('--retry-errors',action='store_true')
+    run.add_argument('--output')
+    run.add_argument('--db',default='runs/evaluations.sqlite3')
+    args=parser.parse_args()
+    if args.repeats<1 or args.delay<0:
+        parser.error('repeats must be positive and delay nonnegative')
+    for sig in (signal.SIGINT,signal.SIGTERM):
+        signal.signal(sig,lambda *_:STOP.set())
+    if args.fresh:
+        args.run_id=f'manual-{time.time_ns()}'
+    result=run_once(args)
+    if any(item['errors'] for item in result['summary'].values()):
+        raise SystemExit(2)
 
-if __name__ == '__main__':
+if __name__=='__main__':
     main()

@@ -4,7 +4,7 @@ This pass redesigns the existing local evaluation workspace. It does not create 
 
 ## Design direction
 
-A precision instrument workspace: deep navy navigation, a cool paper surface, cobalt actions, and understated type-specific markers. The custom branch-shaped D and probability scale reference bounded decisions. The sample list, not a decorative hero, is the principal working surface.
+A precision instrument workspace: deep navy navigation, a cool paper surface, cobalt actions, and understated type-specific markers. The custom branch-shaped D references bounded decisions. The sample list, not a decorative hero, is the principal working surface.
 
 Palette: navy `#112039`, paper `#ffffff`, canvas `#f4f6fa`, cobalt `#315efb`, green `#187a66`, error `#b13e56`. Chinese headings use DengXian with local fallbacks; body uses Segoe UI Variable / Microsoft YaHei UI; numerical utilities use Bahnschrift / Consolas. No remote font dependency.
 
@@ -19,7 +19,7 @@ Palette: navy `#112039`, paper `#ffffff`, canvas `#f4f6fa`, cobalt `#315efb`, gr
 | Motion | Short entry, dialog and selection transitions; no scroll hijacking or ambient loops; respects reduced-motion. |
 | Micro-interaction | Focus rings, keyboard `/` search, hover / press states, checked-row feedback, live slider fill, model selection feedback. |
 | Responsive | Desktop table becomes actionable cards on small screens; checks at 390, 768, 1280 and 1440 px; no page-level horizontal overflow. |
-| Originality | Branch-shaped identity and instrument scale connect the visual language to decision evaluation; group controls operate on real samples. |
+| Originality | Branch-shaped identity connects the visual language to decision evaluation; group controls operate on real samples. |
 
 ## Iterations
 
@@ -41,3 +41,7 @@ Palette: navy `#112039`, paper `#ffffff`, canvas `#f4f6fa`, cobalt `#315efb`, gr
 [Digital Curator, Awwwards SOTD](https://www.awwwards.com/sites/digital-curator) provides a relevant reference for treating filtering as a first-class product experience. [Igloo Inc, Awwwards SOTD](https://www.awwwards.com/sites/igloo-inc) provides a reference for a restrained palette and cohesive interaction direction. These are references for craft; their immersive presentation patterns are not copied into an evaluation tool.
 
 Original HTML/CSS/JS were backed up under `runs/design-backup-20261025` in the local project. The application continues to serve at http://localhost:8787.
+
+## Product usability review
+
+The main views present business content, answer descriptions and comparison outcomes. Structured records have labeled forms; technical model inputs and outputs are collapsed at the end. Decorative scale and pre-task history were removed. Threshold previews are separate from persisted task/model/question policies; small-sample limits and repeated observations are explicit. See THRESHOLD_REVIEW.md for the model-interface and evaluation review.
